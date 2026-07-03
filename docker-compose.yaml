@@ -5,6 +5,8 @@ services:
   # Принимает спаны от приложений (HTTP/gRPC/Thrift) и пишет в ES
   jaeger-collector:
     image: repo.vsk.ru:5001/jaegertracing/jaeger-collector:1.62.0
+    stdin_open: true
+    tty: true
     container_name: jaeger-collector
     ports:
       - "14268:14268"   # HTTP  — Jaeger Thrift (legacy)
@@ -15,9 +17,29 @@ services:
       - ES_SERVER_URLS=http://elasticsearch:9200
       - ES_NUM_REPLICAS=0
       - LOG_LEVEL=info
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
+    networks:
+      - jaeger
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - "node.hostname == servername"
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512Mb
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.collector.rule=Host(`collector.jaeger.test.local`)"
+        - "traefik.http.routers.collector.entrypoints=websecure"
+        - "traefik.http.routers.collector.tls=true"
+        - "traefik.http.services.collector.loadbalancer.server.port=14268"
+        - "com.containrrr.watchtower.enable=false"
  
 
   # ============ QUERY + UI ============
@@ -45,6 +67,10 @@ services:
       placement:
         constraints:
           - "node.hostname == servername"
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512Mb
       restart_policy:
         condition: on-failure
         delay: 10s
